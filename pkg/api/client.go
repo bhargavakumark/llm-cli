@@ -96,16 +96,9 @@ func newHTTPClient(bindInterface string) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialer := &net.Dialer{
-				Timeout:   DialTimeout,
-				KeepAlive: 30 * time.Second,
-			}
-			if bindInterface != "" {
-				ip, err := InterfaceIPv4(bindInterface)
-				if err != nil {
-					return nil, err
-				}
-				dialer.LocalAddr = &net.TCPAddr{IP: ip}
+			dialer, err := dialerFor(bindInterface)
+			if err != nil {
+				return nil, err
 			}
 			return dialer.DialContext(ctx, network, addr)
 		},
@@ -114,6 +107,36 @@ func newHTTPClient(bindInterface string) *http.Client {
 	}
 	return &http.Client{Transport: transport, Timeout: RequestTimeout}
 }
+
+// dialerFor builds the dialer every connection goes through, optionally bound
+// to an interface's IPv4 address.
+//
+// Name resolution uses the Go resolver rather than the system resolver on
+// purpose. On the managed machine this tool targets, the system resolver adds
+// five seconds to every public name, which is far more than the request the
+// name was needed for: a model list took 5.17 s with it and 0.17 s without.
+// Both resolvers answer from the same configured name servers, so this changes
+// how long resolution takes and not what it returns.
+func dialerFor(bindInterface string) (*net.Dialer, error) {
+	dialer := &net.Dialer{
+		Timeout:   DialTimeout,
+		KeepAlive: 30 * time.Second,
+		Resolver:  goResolver,
+	}
+	if bindInterface == "" {
+		return dialer, nil
+	}
+
+	ip, err := InterfaceIPv4(bindInterface)
+	if err != nil {
+		return nil, err
+	}
+	dialer.LocalAddr = &net.TCPAddr{IP: ip}
+	return dialer, nil
+}
+
+// goResolver resolves names without the system resolver.
+var goResolver = &net.Resolver{PreferGo: true}
 
 // InterfaceIPv4 returns the first IPv4 address assigned to the named
 // interface. A binding that cannot be resolved is an error rather than a

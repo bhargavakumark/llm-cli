@@ -100,9 +100,14 @@ llm-cli auth setup --llm deepseek --bind-interface ''   # follow the routing tab
 
 The interface has to exist when it is saved, and it has to hold an IPv4
 address when a request is made. Either failure is an error naming the
-interface, never a quiet fall back to the routing table. See
-[ADR 1](docs/adr/0001-bind-outbound-connections-to-en0.md) for why this
-exists.
+interface, never a quiet fall back to the routing table.
+
+Names are resolved with the Go resolver rather than the system resolver,
+because on the managed machine this tool was built on the system resolver adds
+five seconds to every public name, against 0.17 s without it. Both answer from
+the same name servers. See
+[ADR 1](docs/adr/0001-bind-outbound-connections-to-en0.md) for why the
+interface binding exists.
 
 ### `auth show`
 

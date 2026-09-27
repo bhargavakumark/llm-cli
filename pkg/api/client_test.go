@@ -148,6 +148,48 @@ func TestTimeoutsAreConfigured(t *testing.T) {
 	}
 }
 
+func TestDialerResolvesWithoutTheSystemResolver(t *testing.T) {
+	dialer, err := dialerFor("")
+	if err != nil {
+		t.Fatalf("dialerFor() error = %v", err)
+	}
+
+	if dialer.Resolver == nil {
+		t.Fatal("Resolver is nil, so names go through the system resolver")
+	}
+	if !dialer.Resolver.PreferGo {
+		t.Error("PreferGo = false, want the Go resolver to be used")
+	}
+	if dialer.Timeout != DialTimeout {
+		t.Errorf("Timeout = %v, want %v", dialer.Timeout, DialTimeout)
+	}
+	if dialer.LocalAddr != nil {
+		t.Errorf("LocalAddr = %v, want nil when no interface is bound", dialer.LocalAddr)
+	}
+}
+
+func TestDialerBindsTheInterface(t *testing.T) {
+	dialer, err := dialerFor("lo0")
+	if err != nil {
+		t.Fatalf("dialerFor(lo0) error = %v", err)
+	}
+
+	local, ok := dialer.LocalAddr.(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("LocalAddr is %T, want *net.TCPAddr", dialer.LocalAddr)
+	}
+	if !local.IP.IsLoopback() {
+		t.Errorf("LocalAddr = %v, want the loopback address of lo0", local.IP)
+	}
+}
+
+func TestDialerRejectsAnUnknownInterface(t *testing.T) {
+	if _, err := dialerFor("no-such-interface-xyz"); err == nil ||
+		!strings.Contains(err.Error(), "no-such-interface-xyz") {
+		t.Fatalf("dialerFor() error = %v, want it to name the interface", err)
+	}
+}
+
 func TestInterfaceIPv4(t *testing.T) {
 	t.Run("an unknown interface is an error naming it", func(t *testing.T) {
 		_, err := InterfaceIPv4("no-such-interface-xyz")

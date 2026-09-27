@@ -50,14 +50,12 @@ sanctioned alternative. And an interface that does not exist, or that holds no
 IPv4 address, now fails the request. That failure is deliberate: falling back
 to the routing table would reintroduce the block silently and at random.
 
-## Open issue
-
-Go's default resolver on this machine adds 5.0 s to every process that resolves
-a public name, which currently hides the saving: `models` takes 5.17 s against
-0.17 s with the pure Go resolver, and `chat` takes 5.52 s against 0.45 s. The
-same name resolves in milliseconds from curl, and the bound connection itself
-is fast, at 4 ms to connect and 13 ms for the TLS handshake. Choosing a
-resolver is therefore a separate decision from this one.
+One more thing had to change for the saving to be real. A public name costs
+five seconds per process with the system resolver on this machine, against
+0.17 s without it, which is longer than the request the name was needed for.
+The client therefore resolves names with the Go resolver. Both resolvers answer
+from the same configured name servers, so nothing about the answer changes,
+only how long it takes to arrive.
 
 ## Alternatives considered
 
