@@ -47,6 +47,11 @@ type Client struct {
 	c       *openai.Client
 	BaseURL string
 
+	// IncludeUsage asks the endpoint for token accounting during a streamed
+	// reply, via the stream_options field. Off means the field is not sent at
+	// all, so endpoints that reject it keep working.
+	IncludeUsage bool
+
 	// LogRequests dumps each outgoing request through Logger.
 	LogRequests bool
 	// Logger receives the dump. Nil means LogRequests does nothing.
@@ -105,6 +110,9 @@ func (cl *Client) ChatStream(
 		Model:    model,
 		Messages: toOpenAI(messages),
 	}
+	if cl.IncludeUsage {
+		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+	}
 	cl.logRequest(req)
 
 	stream, err := cl.c.CreateChatCompletionStream(ctx, req)
@@ -138,6 +146,12 @@ func (cl *Client) ChatStream(
 				return result, err
 			}
 		}
+
+		// Every chunk before the last carries a null usage field, so only a
+		// real report replaces what is already there.
+		if response.Usage != nil {
+			result.Usage = toUsage(*response.Usage)
+		}
 	}
 
 	if result.Chunks == 0 {
@@ -156,6 +170,9 @@ func (cl *Client) Chat(
 		Model:    model,
 		Messages: toOpenAI(messages),
 	}
+	if cl.IncludeUsage {
+		req.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+	}
 	cl.logRequest(req)
 
 	response, err := cl.c.CreateChatCompletion(ctx, req)
@@ -173,6 +190,7 @@ func (cl *Client) Chat(
 			Role:    answer.Role,
 			Content: answer.Content,
 		},
+		Usage: toUsage(response.Usage),
 	}, nil
 }
 
@@ -221,6 +239,23 @@ func toOpenAI(messages []domain.Message) []openai.ChatCompletionMessage {
 			Role:    message.Role,
 			Content: message.Content,
 		})
+	}
+	return out
+}
+
+// toUsage flattens token accounting into the fields reported on stderr. The
+// detail blocks are optional, so an absent one leaves its field zero.
+func toUsage(usage openai.Usage) domain.Usage {
+	out := domain.Usage{
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		TotalTokens:      usage.TotalTokens,
+	}
+	if usage.PromptTokensDetails != nil {
+		out.CachedTokens = usage.PromptTokensDetails.CachedTokens
+	}
+	if usage.CompletionTokensDetails != nil {
+		out.ReasoningTokens = usage.CompletionTokensDetails.ReasoningTokens
 	}
 	return out
 }

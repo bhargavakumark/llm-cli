@@ -29,6 +29,11 @@ type Target struct {
 	Model     string   `json:"model"`
 	APIKey    string   `json:"api_key"`
 	APIKeyEnv string   `json:"api_key_env"`
+
+	// IncludeUsage asks the endpoint to report token accounting during a
+	// streamed reply. It is off by default, because an endpoint that rejects
+	// the stream_options field would fail every request.
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 // Config is the on-disk config file.

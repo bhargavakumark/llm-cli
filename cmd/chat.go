@@ -80,6 +80,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	client.IncludeUsage = target.IncludeUsage
 	client.LogRequests = logRequests
 	client.Logger = func(dump string) { infofGrey("%s", dump) }
 
@@ -96,6 +97,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		infofGrey("%s -> %s (%s)", name, target.Model, elapsed(start))
+		reportUsage(result.Usage)
 		return nil
 	}
 
@@ -110,7 +112,16 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 
 	infofGrey("%s -> %s (%d chunks, %s)", name, target.Model, result.Chunks, elapsed(start))
+	reportUsage(result.Usage)
 	return nil
+}
+
+// reportUsage writes token accounting on stderr in grey, and writes nothing
+// when the endpoint reported none.
+func reportUsage(usage domain.Usage) {
+	if summary := formatter.UsageSummary(usage); summary != "" {
+		infofGrey("%s", summary)
+	}
 }
 
 // elapsed renders how long an API call took, rounded to something a human

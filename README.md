@@ -59,6 +59,7 @@ credentials, keeping the current value when you press ENTER.
 | `--model` | Model id |
 | `--key` | Literal API key; an empty string clears it |
 | `--key-env` | Name of an environment variable holding the key; an empty string clears it |
+| `--include-usage` | Ask the endpoint for token usage during a streamed reply; off by default |
 | `--verify` | Call `GET /models` before saving; on failure nothing is written |
 
 Credentials are a literal key or an env var name, never both. Passing both
@@ -71,6 +72,18 @@ llm-cli auth setup --llm deepseek --key-env ''    # drop the env var reference
 
 The base URL is never rewritten, so no `/v1` is appended. If an endpoint
 rejects the path, the error shows the full URL that was used.
+
+`--include-usage` sets the target's `include_usage` field, which adds
+`stream_options: {"include_usage": true}` to streamed requests. Both DeepSeek
+and the Salesforce gateway accept it and answer with a final chunk carrying
+`prompt_tokens`, `completion_tokens`, `total_tokens` and, when they apply,
+cached and reasoning counts. It stays off by default because an endpoint that
+rejects the field would fail every request.
+
+```bash
+llm-cli auth setup --llm ds --include-usage
+llm-cli auth setup --llm ds --include-usage=false   # turn it back off
+```
 
 ### `auth show`
 
@@ -119,6 +132,11 @@ empty message.
 | `--file`, `-f` | Read the prompt from a file |
 | `--no-stream` | Wait for the complete response instead of streaming |
 | `--show-reasoning` | Print reasoning deltas to stderr, in grey |
+
+After the answer, chat reports the target, model, chunk count and elapsed time
+on stderr in grey. When the endpoint reports token usage, either because the
+target sets `include_usage` or because a non-streamed reply always carries it,
+a token line follows on stderr. Neither line touches stdout.
 
 The request carries only `model`, `messages` and `stream`. No temperature, no
 `stream_options`, no tools, and nothing else is added to it.
@@ -180,7 +198,8 @@ the shell, and the reason surfaces the next time a command actually runs.
       "base_url": "https://api.deepseek.com",
       "model": "deepseek-flash",
       "api_key": "",
-      "api_key_env": "DEEPSEEK_API_KEY"
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "include_usage": true
     },
     "local": {
       "aliases": ["l"],

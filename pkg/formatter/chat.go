@@ -59,3 +59,28 @@ func Text(out io.Writer, result domain.Result) error {
 	}
 	return nil
 }
+
+// UsageSummary renders token accounting as one line for stderr. Empty when the
+// endpoint reported nothing.
+func UsageSummary(usage domain.Usage) string {
+	if !usage.Reported() {
+		return ""
+	}
+
+	total := usage.TotalTokens
+	if total == 0 {
+		total = usage.PromptTokens + usage.CompletionTokens
+	}
+
+	prompt := fmt.Sprintf("%d prompt", usage.PromptTokens)
+	if usage.CachedTokens > 0 {
+		prompt += fmt.Sprintf(" (%d cached)", usage.CachedTokens)
+	}
+
+	completion := fmt.Sprintf("%d completion", usage.CompletionTokens)
+	if usage.ReasoningTokens > 0 {
+		completion += fmt.Sprintf(" (%d reasoning)", usage.ReasoningTokens)
+	}
+
+	return fmt.Sprintf("tokens: %s + %s = %d total", prompt, completion, total)
+}

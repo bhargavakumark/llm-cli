@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -31,13 +32,14 @@ func newAuthCmd() *cobra.Command {
 }
 
 type setupFlags struct {
-	llm     string
-	aliases []string
-	baseURL string
-	model   string
-	key     string
-	keyEnv  string
-	verify  bool
+	llm          string
+	aliases      []string
+	baseURL      string
+	model        string
+	key          string
+	keyEnv       string
+	verify       bool
+	includeUsage bool
 }
 
 func newAuthSetupCmd() *cobra.Command {
@@ -57,7 +59,14 @@ variable holding the key (--key-env), never both. An empty string clears
 the field it names:
 
     llm-cli auth setup --llm deepseek --key ''
-    llm-cli auth setup --llm deepseek --key-env ''`,
+    llm-cli auth setup --llm deepseek --key-env ''
+
+--include-usage asks the endpoint to report token accounting during a
+streamed reply. It is off by default, so enable it only for endpoints that
+accept the stream_options field:
+
+    llm-cli auth setup --llm ds --include-usage
+    llm-cli auth setup --llm ds --include-usage=false`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runAuthSetup(cmd, f)
@@ -71,6 +80,7 @@ the field it names:
 	fl.StringVar(&f.model, "model", "", "Model id")
 	fl.StringVar(&f.key, "key", "", "Literal API key; an empty string clears it")
 	fl.StringVar(&f.keyEnv, "key-env", "", "Env var holding the API key; an empty string clears it")
+	fl.BoolVar(&f.includeUsage, "include-usage", false, "Ask the endpoint for token usage during a streamed reply")
 	fl.BoolVar(&f.verify, "verify", false, "Call GET /models before saving")
 
 	return cmd
@@ -93,7 +103,7 @@ func runAuthSetup(cmd *cobra.Command, f setupFlags) error {
 	target := cfg.LLMs[f.llm]
 	fl := cmd.Flags()
 	nonInteractive := fl.Changed("alias") || fl.Changed("base-url") || fl.Changed("model") ||
-		fl.Changed("key") || fl.Changed("key-env")
+		fl.Changed("key") || fl.Changed("key-env") || fl.Changed("include-usage")
 
 	if nonInteractive {
 		if err := applySetupFlags(fl, f, &target); err != nil {
@@ -155,6 +165,9 @@ func applySetupFlags(fl *pflag.FlagSet, f setupFlags, target *config.Target) err
 	if fl.Changed("alias") {
 		target.Aliases = f.aliases
 	}
+	if fl.Changed("include-usage") {
+		target.IncludeUsage = f.includeUsage
+	}
 
 	keyGiven := fl.Changed("key") && strings.TrimSpace(f.key) != ""
 	keyEnvGiven := fl.Changed("key-env") && strings.TrimSpace(f.keyEnv) != ""
@@ -188,6 +201,12 @@ func promptForTarget(cmd *cobra.Command, target *config.Target) error {
 		return fmt.Errorf("read input: %w", err)
 	}
 
+	includeUsage, err := askBool(scanner, "Include token usage in streamed replies (true/false)", target.IncludeUsage)
+	if err != nil {
+		return err
+	}
+	target.IncludeUsage = includeUsage
+
 	if target.APIKey != "" && target.APIKeyEnv != "" {
 		return errors.New("set either a literal API key or an env var name, not both")
 	}
@@ -211,6 +230,18 @@ func ask(scanner *bufio.Scanner, label, current string) string {
 		return v
 	}
 	return current
+}
+
+// askBool prompts on stderr and keeps the current value on a blank answer. An
+// answer that is not a boolean is an error, not a silent default.
+func askBool(scanner *bufio.Scanner, label string, current bool) (bool, error) {
+	answer := ask(scanner, label, strconv.FormatBool(current))
+
+	parsed, err := strconv.ParseBool(strings.TrimSpace(answer))
+	if err != nil {
+		return current, fmt.Errorf("%s: %q is not true or false", label, answer)
+	}
+	return parsed, nil
 }
 
 func verifyTarget(parent context.Context, target config.Target) error {
@@ -279,11 +310,11 @@ func runAuthShow(cmd *cobra.Command, _ []string) error {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tDEFAULT\tALIASES\tBASE_URL\tMODEL\tKEY\tKEY_ENV")
+	fmt.Fprintln(w, "NAME\tDEFAULT\tALIASES\tBASE_URL\tMODEL\tKEY\tKEY_ENV\tUSAGE")
 
 	for _, name := range cfg.Names() {
 		target := cfg.LLMs[name]
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			name,
 			defaultMark(name == cfg.DefaultLLM),
 			dash(strings.Join(target.Aliases, ",")),
@@ -291,6 +322,7 @@ func runAuthShow(cmd *cobra.Command, _ []string) error {
 			target.Model,
 			dash(mask.Token(target.APIKey)),
 			keyEnvColumn(target.APIKeyEnv),
+			yesNo(target.IncludeUsage),
 		)
 	}
 	if err := w.Flush(); err != nil {
@@ -320,6 +352,7 @@ func showOneTarget(w io.Writer, name string, target config.Target, isDefault boo
 		{"MODEL", target.Model},
 		{"API_KEY", dash(mask.Token(target.APIKey))},
 		{"API_KEY_ENV", keyEnvColumn(target.APIKeyEnv)},
+		{"INCLUDE_USAGE", strconv.FormatBool(target.IncludeUsage)},
 	}
 	for _, row := range rows {
 		fmt.Fprintf(fw, "%s\t%s\n", row[0], row[1])
@@ -339,6 +372,13 @@ func dash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }
 
 func keyEnvColumn(env string) string {

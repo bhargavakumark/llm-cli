@@ -28,4 +28,20 @@ type Result struct {
 	// Chunks counts the streamed choices received, which is zero for a
 	// non-streaming call.
 	Chunks int
+	// Usage is the token accounting the endpoint reported, if any.
+	Usage Usage
+}
+
+// Usage is one endpoint's token accounting.
+type Usage struct {
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	CachedTokens     int
+	ReasoningTokens  int
+}
+
+// Reported says whether the endpoint sent any token accounting at all.
+func (u Usage) Reported() bool {
+	return u.PromptTokens != 0 || u.CompletionTokens != 0 || u.TotalTokens != 0
 }
