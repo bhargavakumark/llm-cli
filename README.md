@@ -223,9 +223,13 @@ env indirection is a target's own `api_key_env`.
 
 ```bash
 go build -o llm-cli .
+go test ./...
 go vet ./...
 gofmt -l .
 ```
+
+Tests never touch the real config: they point `HOME` at a temporary directory,
+and the HTTP tests run against `httptest` servers rather than a live endpoint.
 
 Layout follows the conventions in
 [`go-cli-lib/CLI-GUIDELINES.md`](https://github.com/bhargavakumark/go-cli-lib):
