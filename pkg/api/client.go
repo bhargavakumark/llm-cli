@@ -14,14 +14,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/bhargavakumark/llm-cli/pkg/domain"
 	openai "github.com/sashabaranov/go-openai"
 )
 
-const chatSuffix = "/chat/completions"
+const (
+	chatSuffix = "/chat/completions"
+
+	// DialTimeout bounds connecting and the TLS handshake, so an unreachable
+	// host fails in seconds instead of hanging.
+	DialTimeout = 10 * time.Second
+
+	// RequestTimeout bounds a whole request including reading the stream. It is
+	// generous because a long generation is legitimate, but it still ends a
+	// connection that goes quiet forever.
+	RequestTimeout = 300 * time.Second
+)
 
 // ErrNoContent reports a stream that ended without any choices. An endpoint
 // that ignores stream=true and answers with a plain JSON body looks the same
@@ -58,8 +72,24 @@ func NewClient(baseURL, apiKey string) (*Client, error) {
 	// DefaultConfig is the only way in: the auth token field is unexported.
 	cfg := openai.DefaultConfig(apiKey)
 	cfg.BaseURL = baseURL
+	cfg.HTTPClient = newHTTPClient()
 
 	return &Client{c: openai.NewClientWithConfig(cfg), BaseURL: baseURL}, nil
+}
+
+// newHTTPClient fails fast on an unreachable host and gives up on a request
+// that never finishes, rather than hanging until the process is killed.
+func newHTTPClient() *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   DialTimeout,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: DialTimeout,
+		ForceAttemptHTTP2:   true,
+	}
+	return &http.Client{Transport: transport, Timeout: RequestTimeout}
 }
 
 // ChatStream runs a streaming completion, calling onChunk for every delta as

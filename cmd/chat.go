@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/bhargavakumark/llm-cli/pkg/api"
 	"github.com/bhargavakumark/llm-cli/pkg/config"
@@ -86,15 +87,20 @@ func runChat(cmd *cobra.Command, args []string) error {
 	defer stop()
 
 	if chatNoStream {
+		start := time.Now()
 		result, err := client.Chat(ctx, target.Model, messages)
 		if err != nil {
 			return cancelled(ctx, err)
 		}
-		infofGrey("%s -> %s", name, target.Model)
-		return formatter.Text(os.Stdout, result)
+		if err := formatter.Text(os.Stdout, result); err != nil {
+			return err
+		}
+		infofGrey("%s -> %s (%s)", name, target.Model, elapsed(start))
+		return nil
 	}
 
 	printer := formatter.NewStreamPrinter(os.Stdout, reasoningWriter())
+	start := time.Now()
 	result, err := client.ChatStream(ctx, target.Model, messages, printer.Write)
 	if err != nil {
 		return cancelled(ctx, hintNoContent(err))
@@ -103,8 +109,14 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	infofGrey("%s -> %s (%d chunks)", name, target.Model, result.Chunks)
+	infofGrey("%s -> %s (%d chunks, %s)", name, target.Model, result.Chunks, elapsed(start))
 	return nil
+}
+
+// elapsed renders how long an API call took, rounded to something a human
+// reads quickly.
+func elapsed(start time.Time) string {
+	return time.Since(start).Round(time.Millisecond).String()
 }
 
 // reasoningWriter returns a function that colours reasoning deltas on stderr,
