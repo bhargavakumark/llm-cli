@@ -145,6 +145,27 @@ If a stream finishes with no content at all, that is an error rather than an
 empty success. When an endpoint ignores `stream=true` and answers with a plain
 JSON body, the error says so and suggests `--no-stream`.
 
+### `models`
+
+Asks the selected target what it advertises and prints the ids, one per line,
+in the order the endpoint returned them. The target's credential is used when
+it has one and nothing is written to the config file.
+
+```bash
+llm-cli models --llm ds
+llm-cli models --llm ds | grep flash     # stdout is just the ids
+```
+
+```
+deepseek-flash
+deepseek-v4-pro
+```
+
+The list is what the endpoint advertises, not a complete contract. Endpoints
+accept ids they do not list: the DeepSeek target above serves
+`deepseek-chat` as well, even though it never appears here. So a missing id
+may still work, and a listed id is no promise either.
+
 ### `auth`
 
 ```bash
@@ -159,6 +180,9 @@ Global flags:
 | `--llm` | Target name or alias; falls back to the configured default |
 | `--quiet`, `-q` | Suppress progress messages on stderr |
 | `--log-requests` | Print each outgoing request body to stderr in grey |
+
+Every command above also prints a grey summary line on stderr naming the
+target and endpoint it used; `--quiet` removes it.
 
 Exit codes: `0` on success, `1` on error, `130` when interrupted, with the
 partial answer already on stdout.

@@ -28,17 +28,23 @@ func useTempHome(t *testing.T) string {
 	return home
 }
 
-// runRoot executes a fresh root command with the given arguments. Flag values
-// are set after newRootCmd, since building the command rebinds every flag
-// variable to its default.
+// runRoot executes a fresh root command quietly.
 func runRoot(t *testing.T, stdin string, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	return runRootMode(t, true, stdin, args...)
+}
+
+// runRootMode executes a fresh root command with the given arguments. Flag
+// values are set after newRootCmd, since building the command rebinds every
+// flag variable to its default.
+func runRootMode(t *testing.T, quietMode bool, stdin string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 
 	original := stdinIsTerminal
 	t.Cleanup(func() { stdinIsTerminal = original })
 
 	cmd := newRootCmd()
-	quiet = true
+	quiet = quietMode
 
 	outBuf := &bytes.Buffer{}
 	errBuf := &bytes.Buffer{}
@@ -49,6 +55,29 @@ func runRoot(t *testing.T, stdin string, args ...string) (stdout, stderr string,
 
 	err = cmd.Execute()
 	return outBuf.String(), errBuf.String(), err
+}
+
+// runRootCaptured runs a command with os.Stdout and os.Stderr replaced, since
+// the grey progress lines are written to the process streams rather than to the
+// command's writers.
+func runRootCaptured(t *testing.T, quietMode bool, args ...string) (string, string, error) {
+	t.Helper()
+
+	var runErr error
+	stdout, stderr := captureStdio(t, func() {
+		cmd := newRootCmd()
+		// Point the command's writers at the captured streams, so a command
+		// that uses cmd.OutOrStdout and one that writes to os.Stdout both land
+		// in the same place.
+		cmd.SetOut(os.Stdout)
+		cmd.SetErr(os.Stderr)
+		cmd.SetIn(strings.NewReader(""))
+		cmd.SetArgs(args)
+
+		quiet = quietMode
+		runErr = cmd.Execute()
+	})
+	return stdout, stderr, runErr
 }
 
 // captureStdio runs fn with os.Stdout and os.Stderr replaced, which is what

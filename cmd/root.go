@@ -62,6 +62,7 @@ Progress, prompts and errors go to stderr.`,
 
 	cmd.AddCommand(newAuthCmd())
 	cmd.AddCommand(newChatCmd())
+	cmd.AddCommand(newModelsCmd())
 
 	return cmd
 }

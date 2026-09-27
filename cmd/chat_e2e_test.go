@@ -71,23 +71,10 @@ func targetConfig(t *testing.T, name, baseURL string, includeUsage bool) {
 	})
 }
 
-// runChatCommand runs chat with os.Stdout and os.Stderr captured, which is what
-// chat writes to.
+// runChatCommand runs chat with the process streams captured.
 func runChatCommand(t *testing.T, quietMode bool, args ...string) (string, string, error) {
 	t.Helper()
-
-	var runErr error
-	stdout, stderr := captureStdio(t, func() {
-		cmd := newRootCmd()
-		cmd.SetOut(io.Discard)
-		cmd.SetErr(io.Discard)
-		cmd.SetIn(strings.NewReader(""))
-		cmd.SetArgs(args)
-
-		quiet = quietMode
-		runErr = cmd.Execute()
-	})
-	return stdout, stderr, runErr
+	return runRootCaptured(t, quietMode, args...)
 }
 
 // usageAwareServer sends a usage chunk only when the request asked for one,
