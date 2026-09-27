@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,7 +67,7 @@ func streamServer(t *testing.T, bodies ...string) *httptest.Server {
 
 func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	t.Helper()
-	client, err := NewClient(server.URL, "sk-test")
+	client, err := NewClient(server.URL, "sk-test", "")
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
@@ -89,7 +90,7 @@ func TestNewClientValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewClient(test.baseURL, "sk-test")
+			_, err := NewClient(test.baseURL, "sk-test", "")
 
 			if test.wantErr == "" {
 				if err != nil {
@@ -112,7 +113,7 @@ func TestNewClientKeepsBaseURLVerbatim(t *testing.T) {
 		"http://127.0.0.1:6203/v1",
 		"https://host/openai/",
 	} {
-		client, err := NewClient(baseURL, "sk-test")
+		client, err := NewClient(baseURL, "sk-test", "")
 		if err != nil {
 			t.Fatalf("NewClient(%q) error = %v", baseURL, err)
 		}
@@ -130,7 +131,7 @@ func TestTimeoutsAreConfigured(t *testing.T) {
 		t.Errorf("DialTimeout = %v, want 10s", DialTimeout)
 	}
 
-	client := newHTTPClient()
+	client := newHTTPClient("")
 	if client.Timeout != RequestTimeout {
 		t.Errorf("http.Client.Timeout = %v, want %v", client.Timeout, RequestTimeout)
 	}
@@ -144,6 +145,93 @@ func TestTimeoutsAreConfigured(t *testing.T) {
 	}
 	if transport.DialContext == nil {
 		t.Error("DialContext is nil, so dialing is unbounded")
+	}
+}
+
+func TestInterfaceIPv4(t *testing.T) {
+	t.Run("an unknown interface is an error naming it", func(t *testing.T) {
+		_, err := InterfaceIPv4("no-such-interface-xyz")
+		if err == nil || !strings.Contains(err.Error(), "no-such-interface-xyz") {
+			t.Fatalf("InterfaceIPv4() error = %v, want it to name the interface", err)
+		}
+	})
+
+	t.Run("loopback resolves to an IPv4 address", func(t *testing.T) {
+		ip, err := InterfaceIPv4("lo0")
+		if err != nil {
+			t.Fatalf("InterfaceIPv4(lo0) error = %v", err)
+		}
+		if ip.To4() == nil {
+			t.Errorf("InterfaceIPv4(lo0) = %v, want an IPv4 address", ip)
+		}
+		if !ip.IsLoopback() {
+			t.Errorf("InterfaceIPv4(lo0) = %v, want a loopback address", ip)
+		}
+	})
+
+	t.Run("an interface without an IPv4 address is an error", func(t *testing.T) {
+		// Machine dependent: skip when every interface has an IPv4 address.
+		interfaces, err := net.Interfaces()
+		if err != nil {
+			t.Fatalf("list interfaces: %v", err)
+		}
+		found := ""
+		for _, iface := range interfaces {
+			if _, err := InterfaceIPv4(iface.Name); err != nil &&
+				strings.Contains(err.Error(), "no IPv4 address") {
+				found = iface.Name
+				break
+			}
+		}
+		if found == "" {
+			t.Skip("every interface on this machine has an IPv4 address")
+		}
+
+		_, err = InterfaceIPv4(found)
+		if err == nil || !strings.Contains(err.Error(), "no IPv4 address") {
+			t.Fatalf("InterfaceIPv4(%s) error = %v, want a missing-address error", found, err)
+		}
+	})
+}
+
+func TestBindInterfaceSendsRequestsOverThatInterface(t *testing.T) {
+	// A bind to loopback must not break a request to a loopback test server,
+	// which is the one case a binding can be exercised without a second
+	// network path.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte("ok"))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "sk-test", "lo0")
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	if client.BaseURL != server.URL {
+		t.Errorf("BaseURL = %q, want the base URL kept verbatim", client.BaseURL)
+	}
+
+	response, err := client.Chat(context.Background(), "m", []domain.Message{{Role: domain.RoleUser, Content: "hi"}})
+	if err == nil {
+		t.Fatalf("Chat() = %+v, want a decode failure because the test server does not answer like an endpoint", response)
+	}
+	if strings.Contains(err.Error(), "bind interface") {
+		t.Errorf("Chat() error = %v, want the request to reach the server rather than a bind failure", err)
+	}
+}
+
+func TestBindInterfaceFailureNamesTheInterface(t *testing.T) {
+	client, err := NewClient("http://127.0.0.1:1", "sk-test", "no-such-interface-xyz")
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	_, err = client.ListModels(context.Background())
+	if err == nil {
+		t.Fatal("ListModels() error = nil, want the dial to fail")
+	}
+	if !strings.Contains(err.Error(), "no-such-interface-xyz") {
+		t.Errorf("ListModels() error = %v, want it to name the interface", err)
 	}
 }
 

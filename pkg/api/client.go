@@ -61,7 +61,13 @@ type Client struct {
 // NewClient builds a client for baseURL. The base URL is stored exactly as
 // given: no /v1 is appended and no path is rewritten, because go-openai
 // joins it with the endpoint suffix verbatim.
-func NewClient(baseURL, apiKey string) (*Client, error) {
+//
+// bindInterface names a local interface to bind outbound connections to, or
+// is empty for no bind. The interface address is resolved on every
+// connection, so a change of address is picked up without a restart, and a
+// missing interface or one without an IPv4 address fails the request instead
+// of quietly falling back to the routing table.
+func NewClient(baseURL, apiKey, bindInterface string) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, errors.New("api client: base_url is empty")
 	}
@@ -77,24 +83,67 @@ func NewClient(baseURL, apiKey string) (*Client, error) {
 	// DefaultConfig is the only way in: the auth token field is unexported.
 	cfg := openai.DefaultConfig(apiKey)
 	cfg.BaseURL = baseURL
-	cfg.HTTPClient = newHTTPClient()
+	cfg.HTTPClient = newHTTPClient(bindInterface)
 
 	return &Client{c: openai.NewClientWithConfig(cfg), BaseURL: baseURL}, nil
 }
 
 // newHTTPClient fails fast on an unreachable host and gives up on a request
-// that never finishes, rather than hanging until the process is killed.
-func newHTTPClient() *http.Client {
+// that never finishes, rather than hanging until the process is killed. When
+// an interface is named, every connection binds its source address to that
+// interface's IPv4 address.
+func newHTTPClient(bindInterface string) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   DialTimeout,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			dialer := &net.Dialer{
+				Timeout:   DialTimeout,
+				KeepAlive: 30 * time.Second,
+			}
+			if bindInterface != "" {
+				ip, err := InterfaceIPv4(bindInterface)
+				if err != nil {
+					return nil, err
+				}
+				dialer.LocalAddr = &net.TCPAddr{IP: ip}
+			}
+			return dialer.DialContext(ctx, network, addr)
+		},
 		TLSHandshakeTimeout: DialTimeout,
 		ForceAttemptHTTP2:   true,
 	}
 	return &http.Client{Transport: transport, Timeout: RequestTimeout}
+}
+
+// InterfaceIPv4 returns the first IPv4 address assigned to the named
+// interface. A binding that cannot be resolved is an error rather than a
+// reason to let the routing table choose, because on a machine that routes
+// public traffic through a tunnel, falling back is a silent change of path.
+func InterfaceIPv4(name string) (net.IP, error) {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("bind interface %q: %w", name, err)
+	}
+
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, fmt.Errorf("bind interface %q: %w", name, err)
+	}
+	for _, addr := range addrs {
+		var ip net.IP
+		switch value := addr.(type) {
+		case *net.IPNet:
+			ip = value.IP
+		case *net.IPAddr:
+			ip = value.IP
+		default:
+			continue
+		}
+		if v4 := ip.To4(); v4 != nil {
+			return v4, nil
+		}
+	}
+	return nil, fmt.Errorf("bind interface %q has no IPv4 address", name)
 }
 
 // ChatStream runs a streaming completion, calling onChunk for every delta as

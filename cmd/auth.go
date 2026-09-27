@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -32,14 +33,15 @@ func newAuthCmd() *cobra.Command {
 }
 
 type setupFlags struct {
-	llm          string
-	aliases      []string
-	baseURL      string
-	model        string
-	key          string
-	keyEnv       string
-	verify       bool
-	includeUsage bool
+	llm           string
+	aliases       []string
+	baseURL       string
+	model         string
+	key           string
+	keyEnv        string
+	verify        bool
+	includeUsage  bool
+	bindInterface string
 }
 
 func newAuthSetupCmd() *cobra.Command {
@@ -81,6 +83,7 @@ accept the stream_options field:
 	fl.StringVar(&f.key, "key", "", "Literal API key; an empty string clears it")
 	fl.StringVar(&f.keyEnv, "key-env", "", "Env var holding the API key; an empty string clears it")
 	fl.BoolVar(&f.includeUsage, "include-usage", false, "Ask the endpoint for token usage during a streamed reply")
+	fl.StringVar(&f.bindInterface, "bind-interface", "", "Bind outbound connections to this interface's IPv4 address; an empty string clears it")
 	fl.BoolVar(&f.verify, "verify", false, "Call GET /models before saving")
 
 	return cmd
@@ -103,7 +106,8 @@ func runAuthSetup(cmd *cobra.Command, f setupFlags) error {
 	target := cfg.LLMs[f.llm]
 	fl := cmd.Flags()
 	nonInteractive := fl.Changed("alias") || fl.Changed("base-url") || fl.Changed("model") ||
-		fl.Changed("key") || fl.Changed("key-env") || fl.Changed("include-usage")
+		fl.Changed("key") || fl.Changed("key-env") || fl.Changed("include-usage") ||
+		fl.Changed("bind-interface")
 
 	if nonInteractive {
 		if err := applySetupFlags(fl, f, &target); err != nil {
@@ -168,6 +172,19 @@ func applySetupFlags(fl *pflag.FlagSet, f setupFlags, target *config.Target) err
 	if fl.Changed("include-usage") {
 		target.IncludeUsage = f.includeUsage
 	}
+	if fl.Changed("bind-interface") {
+		name := strings.TrimSpace(f.bindInterface)
+		if name != "" {
+			// Catch a typo here rather than at the first request. Only
+			// existence is checked: the interface may legitimately have no
+			// address at the moment of saving, and a missing address is
+			// reported per connection.
+			if err := checkBindInterface(name); err != nil {
+				return err
+			}
+		}
+		target.BindInterface = name
+	}
 
 	keyGiven := fl.Changed("key") && strings.TrimSpace(f.key) != ""
 	keyEnvGiven := fl.Changed("key-env") && strings.TrimSpace(f.keyEnv) != ""
@@ -186,6 +203,16 @@ func applySetupFlags(fl *pflag.FlagSet, f setupFlags, target *config.Target) err
 		if f.keyEnv != "" {
 			target.APIKey = ""
 		}
+	}
+	return nil
+}
+
+// checkBindInterface reports whether the named interface exists, so that a
+// typo is caught before it reaches the config file. The interface's address is
+// resolved per connection, which is where a missing IPv4 address is reported.
+func checkBindInterface(name string) error {
+	if _, err := net.InterfaceByName(name); err != nil {
+		return fmt.Errorf("bind interface %q: %w", name, err)
 	}
 	return nil
 }
@@ -249,7 +276,7 @@ func verifyTarget(parent context.Context, target config.Target) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
-	client, err := api.NewClient(target.BaseURL, target.APIKeyValue())
+	client, err := api.NewClient(target.BaseURL, target.APIKeyValue(), target.BindInterface)
 	if err != nil {
 		return err
 	}
@@ -311,11 +338,11 @@ func runAuthShow(cmd *cobra.Command, _ []string) error {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tDEFAULT\tALIASES\tBASE_URL\tMODEL\tKEY\tKEY_ENV\tUSAGE")
+	fmt.Fprintln(w, "NAME\tDEFAULT\tALIASES\tBASE_URL\tMODEL\tKEY\tKEY_ENV\tUSAGE\tBIND")
 
 	for _, name := range cfg.Names() {
 		target := cfg.LLMs[name]
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			name,
 			defaultMark(name == cfg.DefaultLLM),
 			dash(strings.Join(target.Aliases, ",")),
@@ -324,6 +351,7 @@ func runAuthShow(cmd *cobra.Command, _ []string) error {
 			dash(mask.Token(target.APIKey)),
 			keyEnvColumn(target.APIKeyEnv),
 			yesNo(target.IncludeUsage),
+			dash(target.BindInterface),
 		)
 	}
 	if err := w.Flush(); err != nil {
@@ -354,6 +382,7 @@ func showOneTarget(w io.Writer, name string, target config.Target, isDefault boo
 		{"API_KEY", dash(mask.Token(target.APIKey))},
 		{"API_KEY_ENV", keyEnvColumn(target.APIKeyEnv)},
 		{"INCLUDE_USAGE", strconv.FormatBool(target.IncludeUsage)},
+		{"BIND_INTERFACE", dash(target.BindInterface)},
 	}
 	for _, row := range rows {
 		fmt.Fprintf(fw, "%s\t%s\n", row[0], row[1])

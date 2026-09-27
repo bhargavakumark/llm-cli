@@ -76,7 +76,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 	}
 	messages = append(messages, domain.Message{Role: domain.RoleUser, Content: prompt})
 
-	client, err := api.NewClient(target.BaseURL, target.APIKeyValue())
+	client, err := api.NewClient(target.BaseURL, target.APIKeyValue(), target.BindInterface)
 	if err != nil {
 		return err
 	}

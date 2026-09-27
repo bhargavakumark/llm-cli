@@ -45,7 +45,7 @@ func runModels(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	client, err := api.NewClient(target.BaseURL, target.APIKeyValue())
+	client, err := api.NewClient(target.BaseURL, target.APIKeyValue(), target.BindInterface)
 	if err != nil {
 		return err
 	}

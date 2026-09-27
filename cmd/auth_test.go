@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -241,6 +242,81 @@ func TestAuthSetupTurnsUsageOff(t *testing.T) {
 
 	if loadConfig(t).LLMs["t"].IncludeUsage {
 		t.Error("IncludeUsage = true, want false after --include-usage=false")
+	}
+}
+
+func TestAuthSetupBindsAnInterface(t *testing.T) {
+	useTempHome(t)
+
+	_, _, err := runRoot(t, "", "auth", "setup", "--llm", "deepseek",
+		"--base-url", "https://api.deepseek.com", "--model", "deepseek-flash",
+		"--bind-interface", "en0")
+	if err != nil {
+		t.Fatalf("auth setup error = %v", err)
+	}
+	if got := loadConfig(t).LLMs["deepseek"].BindInterface; got != "en0" {
+		t.Errorf("BindInterface = %q, want en0", got)
+	}
+
+	if _, _, err := runRoot(t, "", "auth", "setup", "--llm", "deepseek", "--bind-interface", ""); err != nil {
+		t.Fatalf("clearing setup error = %v", err)
+	}
+	if got := loadConfig(t).LLMs["deepseek"].BindInterface; got != "" {
+		t.Errorf("BindInterface = %q, want an empty string to clear it", got)
+	}
+}
+
+func TestAuthSetupRejectsAnUnknownInterface(t *testing.T) {
+	useTempHome(t)
+
+	_, _, err := runRoot(t, "", "auth", "setup", "--llm", "deepseek",
+		"--base-url", "https://api.deepseek.com", "--model", "m",
+		"--bind-interface", "no-such-interface-xyz")
+
+	if err == nil || !strings.Contains(err.Error(), "no-such-interface-xyz") {
+		t.Fatalf("auth setup error = %v, want it to name the interface", err)
+	}
+	// Nothing is written at all, so the config file must not exist yet.
+	if _, err := config.Load(); !errors.Is(err, config.ErrNoConfig) {
+		t.Fatalf("Load() error = %v, want no config file written", err)
+	}
+}
+
+func TestAuthShowShowsTheBindInterface(t *testing.T) {
+	useTempHome(t)
+
+	if _, _, err := runRoot(t, "", "auth", "setup", "--llm", "deepseek", "--alias", "ds",
+		"--base-url", "https://api.deepseek.com", "--model", "m", "--bind-interface", "en0"); err != nil {
+		t.Fatalf("setup error = %v", err)
+	}
+	if _, _, err := runRoot(t, "", "auth", "setup", "--llm", "luna",
+		"--base-url", "https://gateway.example.com", "--model", "gpt-6-luna"); err != nil {
+		t.Fatalf("setup error = %v", err)
+	}
+
+	stdout, _, err := runRoot(t, "", "auth", "show")
+	if err != nil {
+		t.Fatalf("auth show error = %v", err)
+	}
+	if !strings.Contains(stdout, "BIND") || !strings.Contains(stdout, "en0") {
+		t.Errorf("the table should have a BIND column showing en0:\n%s", stdout)
+	}
+
+	stdout, _, err = runRoot(t, "", "auth", "show", "--llm", "ds")
+	if err != nil {
+		t.Fatalf("auth show error = %v", err)
+	}
+	if !strings.Contains(stdout, "BIND_INTERFACE") || !strings.Contains(stdout, "en0") {
+		t.Errorf("the single-target view should show the bind interface:\n%s", stdout)
+	}
+
+	// A target without a bind shows a dash rather than a default.
+	stdout, _, err = runRoot(t, "", "auth", "show", "--llm", "luna")
+	if err != nil {
+		t.Fatalf("auth show error = %v", err)
+	}
+	if !strings.Contains(stdout, "BIND_INTERFACE  -") {
+		t.Errorf("an unbound target should show a dash:\n%s", stdout)
 	}
 }
 

@@ -34,6 +34,13 @@ type Target struct {
 	// streamed reply. It is off by default, because an endpoint that rejects
 	// the stream_options field would fail every request.
 	IncludeUsage bool `json:"include_usage,omitempty"`
+
+	// BindInterface names a local interface whose IPv4 address outbound
+	// connections bind as their source address. On a machine where a tunnel
+	// interface carries the public routes, binding to the physical interface
+	// sends the request out through that interface instead, which keeps it
+	// off the tunnel. Empty means no bind, so the routing table decides.
+	BindInterface string `json:"bind_interface,omitempty"`
 }
 
 // Config is the on-disk config file.

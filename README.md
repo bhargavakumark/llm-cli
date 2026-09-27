@@ -60,6 +60,7 @@ credentials, keeping the current value when you press ENTER.
 | `--key` | Literal API key; an empty string clears it |
 | `--key-env` | Name of an environment variable holding the key; an empty string clears it |
 | `--include-usage` | Ask the endpoint for token usage during a streamed reply; off by default |
+| `--bind-interface` | Bind outbound connections to this interface's IPv4 address; an empty string clears it |
 | `--verify` | Call `GET /models` before saving; on failure nothing is written |
 
 Credentials are a literal key or an env var name, never both. Passing both
@@ -84,6 +85,24 @@ rejects the field would fail every request.
 llm-cli auth setup --llm ds --include-usage
 llm-cli auth setup --llm ds --include-usage=false   # turn it back off
 ```
+
+`--bind-interface` makes the target's connections leave through a named
+interface instead of following the routing table. The address is resolved
+from the interface on every connection, so a DHCP change or a machine that
+moves between networks is picked up without editing the config. It is set per
+target because a destination reachable only through a tunnel stops working
+when it is bound to the physical interface.
+
+```bash
+llm-cli auth setup --llm deepseek --bind-interface en0
+llm-cli auth setup --llm deepseek --bind-interface ''   # follow the routing table again
+```
+
+The interface has to exist when it is saved, and it has to hold an IPv4
+address when a request is made. Either failure is an error naming the
+interface, never a quiet fall back to the routing table. See
+[ADR 1](docs/adr/0001-bind-outbound-connections-to-en0.md) for why this
+exists.
 
 ### `auth show`
 
@@ -223,7 +242,8 @@ the shell, and the reason surfaces the next time a command actually runs.
       "model": "deepseek-flash",
       "api_key": "",
       "api_key_env": "DEEPSEEK_API_KEY",
-      "include_usage": true
+      "include_usage": true,
+      "bind_interface": "en0"
     },
     "local": {
       "aliases": ["l"],
@@ -250,7 +270,7 @@ them, are recorded as ADRs in [`docs/adr/`](docs/adr/).
 
 | ADR | Decision | Status |
 |---|---|---|
-| [1](docs/adr/0001-bind-outbound-connections-to-en0.md) | Bind outbound connections to the physical interface | accepted, not implemented |
+| [1](docs/adr/0001-bind-outbound-connections-to-en0.md) | Bind outbound connections to an interface, per target | accepted, implemented |
 
 An ADR marked not implemented describes a decision that has been taken but is
 not yet in the code, so the behaviour it describes is not in the binary today.
