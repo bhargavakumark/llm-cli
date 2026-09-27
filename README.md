@@ -108,6 +108,30 @@ Global flags:
 | `--llm` | Target name or alias; falls back to the configured default |
 | `--quiet`, `-q` | Suppress progress messages on stderr |
 
+## Shell Completion
+
+`--llm` completes target names and aliases, with the model and endpoint shown
+as the description and the default target marked. Pressing TAB on a bare
+`--llm` also works for the commands added later, since the flag is persistent
+to the root command.
+
+```bash
+# bash
+source <(llm-cli completion bash)
+# or, to load it in every shell
+echo 'source <(llm-cli completion bash)' >> ~/.bashrc
+
+# zsh
+llm-cli completion zsh > "${fpath[1]}/_llm-cli"
+
+# fish
+llm-cli completion fish > ~/.config/fish/completions/llm-cli.fish
+```
+
+If the config file is missing or fails validation, completion returns the error
+directive: suggestions stop rather than an error message being printed into
+the shell, and the reason surfaces the next time a command actually runs.
+
 ## Configuration
 
 ```json
@@ -152,7 +176,7 @@ Layout follows the conventions in
 
 ```
 main.go              thin entry point
-cmd/                 cobra commands (root, auth)
+cmd/                 cobra commands (root, auth, completion)
 pkg/config/          config load, save, validation, target resolution
 pkg/api/             low-level OpenAI-compatible client
 ```

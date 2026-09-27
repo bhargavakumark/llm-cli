@@ -55,6 +55,10 @@ func init() {
 	pf.StringVar(&llm, "llm", "", "LLM target name or alias (defaults to the configured default)")
 	pf.BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages")
 
+	if err := rootCmd.RegisterFlagCompletionFunc("llm", completeLLM); err != nil {
+		panic(fmt.Sprintf("register --llm completion: %v", err))
+	}
+
 	rootCmd.AddCommand(newAuthCmd())
 }
 
