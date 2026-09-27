@@ -221,6 +221,8 @@ func verifyTarget(parent context.Context, target config.Target) error {
 	if err != nil {
 		return err
 	}
+	client.LogRequests = logRequests
+	client.Logger = func(dump string) { infofGrey("%s", dump) }
 
 	ids, err := client.ListModels(ctx)
 	if err != nil {

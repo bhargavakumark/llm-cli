@@ -95,8 +95,41 @@ Sets the target used when `--llm` is omitted. The first target created by
 
 ## Commands
 
+### `chat`
+
+Sends a prompt to the selected target and prints the reply. Streaming is on
+by default, so text appears as the model produces it; stdout contains the
+answer and nothing else.
+
 ```bash
 llm-cli chat --llm ds "explain this error"
+llm-cli chat --llm ds --no-stream "wait for the whole reply"
+llm-cli chat --llm ds -s "answer in one sentence" "what is a worktree"
+cat notes.md | llm-cli chat --llm ds "summarise this"
+llm-cli chat --llm ds -f prompt.md
+```
+
+The prompt is taken from the arguments, else from `--file`, else from stdin.
+An empty prompt is an error, so a mistyped pipe fails instead of sending an
+empty message.
+
+| Flag | Meaning |
+|---|---|
+| `--system`, `-s` | System prompt, sent as the first message |
+| `--file`, `-f` | Read the prompt from a file |
+| `--no-stream` | Wait for the complete response instead of streaming |
+| `--show-reasoning` | Print reasoning deltas to stderr, in grey |
+
+The request carries only `model`, `messages` and `stream`. No temperature, no
+`stream_options`, no tools, and nothing else is added to it.
+
+If a stream finishes with no content at all, that is an error rather than an
+empty success. When an endpoint ignores `stream=true` and answers with a plain
+JSON body, the error says so and suggests `--no-stream`.
+
+### `auth`
+
+```bash
 llm-cli auth show
 llm-cli auth default --llm luna
 ```
@@ -107,6 +140,10 @@ Global flags:
 |---|---|
 | `--llm` | Target name or alias; falls back to the configured default |
 | `--quiet`, `-q` | Suppress progress messages on stderr |
+| `--log-requests` | Print each outgoing request body to stderr in grey |
+
+Exit codes: `0` on success, `1` on error, `130` when interrupted, with the
+partial answer already on stdout.
 
 ## Shell Completion
 
@@ -176,7 +213,9 @@ Layout follows the conventions in
 
 ```
 main.go              thin entry point
-cmd/                 cobra commands (root, auth, completion)
+cmd/                 cobra commands (root, auth, chat, completion)
 pkg/config/          config load, save, validation, target resolution
+pkg/domain/          chat message, chunk and result types
 pkg/api/             low-level OpenAI-compatible client
+pkg/formatter/       stdout writers for streamed and complete answers
 ```

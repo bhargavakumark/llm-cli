@@ -18,8 +18,9 @@ var (
 	GitCommit = "unknown"
 	BuildDate = "unknown"
 
-	llm   string
-	quiet bool
+	llm         string
+	quiet       bool
+	logRequests bool
 )
 
 var rootCmd = &cobra.Command{
@@ -54,12 +55,14 @@ func init() {
 	pf := rootCmd.PersistentFlags()
 	pf.StringVar(&llm, "llm", "", "LLM target name or alias (defaults to the configured default)")
 	pf.BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages")
+	pf.BoolVar(&logRequests, "log-requests", false, "Print each outgoing request to stderr in grey")
 
 	if err := rootCmd.RegisterFlagCompletionFunc("llm", completeLLM); err != nil {
 		panic(fmt.Sprintf("register --llm completion: %v", err))
 	}
 
 	rootCmd.AddCommand(newAuthCmd())
+	rootCmd.AddCommand(newChatCmd())
 }
 
 // info writes a human-facing message to stderr unless --quiet is set.
