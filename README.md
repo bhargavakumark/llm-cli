@@ -243,6 +243,18 @@ never has to pick a winner. An exact target name wins over an alias.
 There are no credential environment variables of the form `LLM_*`. The only
 env indirection is a target's own `api_key_env`.
 
+## Design decisions
+
+Decisions that are not obvious from the code, and the measurements behind
+them, are recorded as ADRs in [`docs/adr/`](docs/adr/).
+
+| ADR | Decision | Status |
+|---|---|---|
+| [1](docs/adr/0001-bind-outbound-connections-to-en0.md) | Bind outbound connections to the physical interface | accepted, not implemented |
+
+An ADR marked not implemented describes a decision that has been taken but is
+not yet in the code, so the behaviour it describes is not in the binary today.
+
 ## Development
 
 ```bash
@@ -260,7 +272,7 @@ Layout follows the conventions in
 
 ```
 main.go              thin entry point
-cmd/                 cobra commands (root, auth, chat, completion)
+cmd/                 cobra commands (root, auth, chat, models, completion)
 pkg/config/          config load, save, validation, target resolution
 pkg/domain/          chat message, chunk and result types
 pkg/api/             low-level OpenAI-compatible client
