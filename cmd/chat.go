@@ -65,7 +65,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prompt, err := readPrompt(cmd, args)
+	prompt, err := readPrompt(cmd.InOrStdin(), args, chatFile)
 	if err != nil {
 		return err
 	}
@@ -160,16 +160,16 @@ func cancelled(ctx context.Context, err error) error {
 	return err
 }
 
-// readPrompt resolves the prompt from the file flag, the arguments, or stdin,
-// in that order.
-func readPrompt(cmd *cobra.Command, args []string) (string, error) {
-	if chatFile != "" {
-		data, err := os.ReadFile(chatFile)
+// readPrompt resolves the prompt from the file, the arguments, or stdin, in
+// that order.
+func readPrompt(in io.Reader, args []string, file string) (string, error) {
+	if file != "" {
+		data, err := os.ReadFile(file)
 		if err != nil {
 			return "", fmt.Errorf("read prompt file: %w", err)
 		}
 		if strings.TrimSpace(string(data)) == "" {
-			return "", fmt.Errorf("prompt file %s is empty", chatFile)
+			return "", fmt.Errorf("prompt file %s is empty", file)
 		}
 		return string(data), nil
 	}
@@ -186,7 +186,7 @@ func readPrompt(cmd *cobra.Command, args []string) (string, error) {
 		return "", errors.New("no prompt: pass it as an argument, via --file, or on stdin")
 	}
 
-	data, err := io.ReadAll(cmd.InOrStdin())
+	data, err := io.ReadAll(in)
 	if err != nil {
 		return "", fmt.Errorf("read stdin: %w", err)
 	}
@@ -196,7 +196,9 @@ func readPrompt(cmd *cobra.Command, args []string) (string, error) {
 	return string(data), nil
 }
 
-func stdinIsTerminal() bool {
+// stdinIsTerminal is a variable so tests can decide whether stdin looks like
+// a terminal, which is what distinguishes "no prompt given" from "a pipe".
+var stdinIsTerminal = func() bool {
 	info, err := os.Stdin.Stat()
 	if err != nil {
 		return false

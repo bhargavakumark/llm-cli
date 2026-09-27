@@ -140,10 +140,14 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("alias %q on target %q contains whitespace", alias, name)
 			}
 			if existing, ok := owner[alias]; ok {
-				if existing == name {
+				switch {
+				case alias == name:
 					return fmt.Errorf("alias %q on target %q is the target's own name", alias, name)
+				case existing == name:
+					return fmt.Errorf("alias %q is repeated on target %q", alias, name)
+				default:
+					return fmt.Errorf("alias %q on target %q collides with %q", alias, name, existing)
 				}
-				return fmt.Errorf("alias %q on target %q collides with %q", alias, name, existing)
 			}
 			owner[alias] = name
 		}

@@ -23,10 +23,16 @@ var (
 	logRequests bool
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "llm-cli",
-	Short: "Chat with OpenAI-compatible LLM endpoints",
-	Long: `llm-cli talks to any OpenAI-compatible chat completions endpoint.
+// rootCmd is built once for the real binary. Tests build their own with
+// newRootCmd so that flag state never leaks between runs.
+var rootCmd = newRootCmd()
+
+// newRootCmd assembles the root command, its global flags and its subcommands.
+func newRootCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "llm-cli",
+		Short: "Chat with OpenAI-compatible LLM endpoints",
+		Long: `llm-cli talks to any OpenAI-compatible chat completions endpoint.
 
 Targets are named endpoints stored in ~/.config/llm-cli/config.json. Each
 target carries a base URL, a model id, and either a literal API key or the
@@ -38,31 +44,32 @@ The response is the only thing written to stdout, so it composes:
     llm-cli chat --llm ds "summarise this" > answer.md
 
 Progress, prompts and errors go to stderr.`,
-	SilenceErrors: true,
-	SilenceUsage:  true,
-	CompletionOptions: cobra.CompletionOptions{
-		DisableDescriptions: true,
-	},
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDescriptions: true,
+		},
+	}
+
+	pf := cmd.PersistentFlags()
+	pf.StringVar(&llm, "llm", "", "LLM target name or alias (defaults to the configured default)")
+	pf.BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages")
+	pf.BoolVar(&logRequests, "log-requests", false, "Print each outgoing request to stderr in grey")
+
+	if err := cmd.RegisterFlagCompletionFunc("llm", completeLLM); err != nil {
+		panic(fmt.Sprintf("register --llm completion: %v", err))
+	}
+
+	cmd.AddCommand(newAuthCmd())
+	cmd.AddCommand(newChatCmd())
+
+	return cmd
 }
 
 // Execute runs the root command.
 func Execute() error {
 	rootCmd.Version = Version
 	return rootCmd.Execute()
-}
-
-func init() {
-	pf := rootCmd.PersistentFlags()
-	pf.StringVar(&llm, "llm", "", "LLM target name or alias (defaults to the configured default)")
-	pf.BoolVarP(&quiet, "quiet", "q", false, "Suppress progress messages")
-	pf.BoolVar(&logRequests, "log-requests", false, "Print each outgoing request to stderr in grey")
-
-	if err := rootCmd.RegisterFlagCompletionFunc("llm", completeLLM); err != nil {
-		panic(fmt.Sprintf("register --llm completion: %v", err))
-	}
-
-	rootCmd.AddCommand(newAuthCmd())
-	rootCmd.AddCommand(newChatCmd())
 }
 
 // info writes a human-facing message to stderr unless --quiet is set.

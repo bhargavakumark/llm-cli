@@ -192,16 +192,17 @@ func applySetupFlags(fl *pflag.FlagSet, f setupFlags, target *config.Target) err
 
 func promptForTarget(cmd *cobra.Command, target *config.Target) error {
 	scanner := bufio.NewScanner(cmd.InOrStdin())
+	out := cmd.ErrOrStderr()
 
-	target.BaseURL = ask(scanner, "Base URL", target.BaseURL)
-	target.Model = ask(scanner, "Model", target.Model)
-	target.APIKey = ask(scanner, "API key (literal, blank to skip)", mask.Token(target.APIKey))
-	target.APIKeyEnv = ask(scanner, "API key env var name (blank to skip)", target.APIKeyEnv)
+	target.BaseURL = ask(out, scanner, "Base URL", target.BaseURL)
+	target.Model = ask(out, scanner, "Model", target.Model)
+	target.APIKey = ask(out, scanner, "API key (literal, blank to skip)", mask.Token(target.APIKey))
+	target.APIKeyEnv = ask(out, scanner, "API key env var name (blank to skip)", target.APIKeyEnv)
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("read input: %w", err)
 	}
 
-	includeUsage, err := askBool(scanner, "Include token usage in streamed replies (true/false)", target.IncludeUsage)
+	includeUsage, err := askBool(out, scanner, "Include token usage in streamed replies (true/false)", target.IncludeUsage)
 	if err != nil {
 		return err
 	}
@@ -213,17 +214,17 @@ func promptForTarget(cmd *cobra.Command, target *config.Target) error {
 	return nil
 }
 
-// ask prompts on stderr and returns the current value when the answer is
-// blank, so that ENTER keeps what is already there.
-func ask(scanner *bufio.Scanner, label, current string) string {
+// ask prompts on out and returns the current value when the answer is blank,
+// so that ENTER keeps what is already there.
+func ask(out io.Writer, scanner *bufio.Scanner, label, current string) string {
 	if current != "" {
-		fmt.Fprintf(os.Stderr, "%s [%s, press ENTER to keep]: ", label, current)
+		fmt.Fprintf(out, "%s [%s, press ENTER to keep]: ", label, current)
 	} else {
-		fmt.Fprintf(os.Stderr, "%s: ", label)
+		fmt.Fprintf(out, "%s: ", label)
 	}
 
 	if !scanner.Scan() {
-		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(out)
 		return current
 	}
 	if v := strings.TrimSpace(scanner.Text()); v != "" {
@@ -234,8 +235,8 @@ func ask(scanner *bufio.Scanner, label, current string) string {
 
 // askBool prompts on stderr and keeps the current value on a blank answer. An
 // answer that is not a boolean is an error, not a silent default.
-func askBool(scanner *bufio.Scanner, label string, current bool) (bool, error) {
-	answer := ask(scanner, label, strconv.FormatBool(current))
+func askBool(out io.Writer, scanner *bufio.Scanner, label string, current bool) (bool, error) {
+	answer := ask(out, scanner, label, strconv.FormatBool(current))
 
 	parsed, err := strconv.ParseBool(strings.TrimSpace(answer))
 	if err != nil {
