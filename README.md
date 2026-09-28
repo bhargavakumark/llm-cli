@@ -106,8 +106,8 @@ Names are resolved with the Go resolver rather than the system resolver,
 because on the managed machine this tool was built on the system resolver adds
 five seconds to every public name, against 0.17 s without it. Both answer from
 the same name servers. See
-[ADR 1](docs/adr/0001-bind-outbound-connections-to-en0.md) for why the
-interface binding exists.
+[ADR 1](docs/adr/0001-bind-outbound-connections-to-en0.md) for how DeepSeek
+requests are routed off the tunnel.
 
 ### `auth show`
 
@@ -310,7 +310,7 @@ them, are recorded as ADRs in [`docs/adr/`](docs/adr/).
 
 | ADR | Decision | Status |
 |---|---|---|
-| [1](docs/adr/0001-bind-outbound-connections-to-en0.md) | Bind outbound connections to an interface, per target | accepted, implemented |
+| [1](docs/adr/0001-bind-outbound-connections-to-en0.md) | Route DeepSeek through a network-aware local bridge | accepted, implemented |
 
 An ADR marked not implemented describes a decision that has been taken but is
 not yet in the code, so the behaviour it describes is not in the binary today.
