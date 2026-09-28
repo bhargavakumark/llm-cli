@@ -270,12 +270,11 @@ the shell, and the reason surfaces the next time a command actually runs.
   "llms": {
     "deepseek": {
       "aliases": ["ds"],
-      "base_url": "https://api.deepseek.com",
+      "base_url": "http://127.0.0.1:9905",
       "model": "deepseek-flash",
       "api_key": "",
       "api_key_env": "DEEPSEEK_API_KEY",
-      "include_usage": true,
-      "bind_interface": "en0"
+      "include_usage": true
     },
     "local": {
       "aliases": ["l"],
@@ -291,6 +290,15 @@ the shell, and the reason surfaces the next time a command actually runs.
 Aliases must be unique across every target name and alias. A collision found
 while loading the file is a hard error naming both targets, so resolution
 never has to pick a winner. An exact target name wins over an alias.
+
+A base URL may point at a local bridge instead of the endpoint directly. The
+`deepseek` target above points at `http://127.0.0.1:9905`, a local proxy that
+reads the current Wi-Fi name on every request and picks between the direct
+path and a SOCKS tunnel. That target sets no `bind_interface`, because the
+request to the bridge is loopback and binding it to a physical interface
+would make it fail; the bridge does the binding for the direct path itself.
+Keeping the network decision in the bridge means the tool needs no Wi-Fi
+handling of its own.
 
 There are no credential environment variables of the form `LLM_*`. The only
 env indirection is a target's own `api_key_env`.
