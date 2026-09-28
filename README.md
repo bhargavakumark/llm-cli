@@ -147,8 +147,10 @@ llm-cli chat --llm ds -f prompt.md
 ```
 
 The prompt is taken from the arguments, else from `--file`, else from stdin.
-An empty prompt is an error, so a mistyped pipe fails instead of sending an
-empty message.
+When a prompt and a pipe are both present, the piped contents are appended to
+the prompt on a new line, so `cat notes.md | llm-cli chat ds "summarise"` sends
+the instruction followed by the notes. An empty prompt is an error, so a
+mistyped pipe fails instead of sending an empty message.
 
 | Flag | Meaning |
 |---|---|
@@ -168,6 +170,31 @@ The request carries only `model`, `messages` and `stream`. No temperature, no
 If a stream finishes with no content at all, that is an error rather than an
 empty success. When an endpoint ignores `stream=true` and answers with a plain
 JSON body, the error says so and suggests `--no-stream`.
+
+### `code`
+
+Asks for code and prints only the code. It is `chat` with an instruction added
+to the system message: answer with code, no explanation, no prose, no markdown
+fences. Streaming, `--file`, stdin and the stderr summary lines all behave as
+for `chat`, and stdout still contains the answer and nothing else.
+
+```bash
+llm-cli code --llm ds "binary search in go"
+llm-cli code --llm ds -s "python 3.12, stdlib only" "parse a csv"
+cat schema.sql | llm-cli code --llm ds "write a query for monthly totals"
+```
+
+A `--system` value is kept and the raw-code instruction is appended after it,
+so extra context does not override the instruction. If the model fences the
+answer anyway, one wrapping fence is removed; an answer with prose around the
+code is left untouched, because stripping it would change the model's meaning.
+
+| Flag | Meaning |
+|---|---|
+| `--system`, `-s` | Extra system context, sent before the raw-code instruction |
+| `--file`, `-f` | Read the prompt from a file |
+| `--no-stream` | Wait for the complete response instead of streaming |
+| `--show-reasoning` | Print reasoning deltas to stderr, in grey |
 
 ### `models`
 
@@ -297,9 +324,9 @@ Layout follows the conventions in
 
 ```
 main.go              thin entry point
-cmd/                 cobra commands (root, auth, chat, models, completion)
+cmd/                 cobra commands (root, auth, chat, code, models, completion)
 pkg/config/          config load, save, validation, target resolution
 pkg/domain/          chat message, chunk and result types
 pkg/api/             low-level OpenAI-compatible client
-pkg/formatter/       stdout writers for streamed and complete answers
+pkg/formatter/       stdout writers for streamed, complete and raw-code answers
 ```

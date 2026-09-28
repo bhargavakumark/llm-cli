@@ -31,9 +31,10 @@ func newChatCmd() *cobra.Command {
 		Short: "Send a prompt and print the reply to stdout",
 		Long: `Send a prompt to the selected LLM target and print the reply.
 
-The prompt comes from the arguments, from --file, or from stdin. The reply
-is the only thing written to stdout. Streaming is on by default, so the
-answer appears as the model produces it; --no-stream waits for the whole
+The prompt comes from the arguments, from --file, or from stdin. When both a
+prompt and a pipe are present, the piped contents are appended to the prompt.
+The reply is the only thing written to stdout. Streaming is on by default, so
+the answer appears as the model produces it; --no-stream waits for the whole
 response.
 
     llm-cli chat --llm ds "explain this error"
@@ -54,7 +55,24 @@ response.
 	return cmd
 }
 
+// chatMode adjusts how a chat-shaped command shapes its system message and
+// renders the answer. The zero value is the plain chat command: the user's
+// system prompt is sent untouched and the reply is written verbatim.
+type chatMode struct {
+	// systemPrompt is added to the system message by commands that need one.
+	systemPrompt string
+	// appendSystem adds systemPrompt after a user-supplied --system instead of
+	// replacing it, so extra context does not lose the command's instruction.
+	appendSystem bool
+	// rawCode removes one wrapping markdown fence from the answer.
+	rawCode bool
+}
+
 func runChat(cmd *cobra.Command, args []string) error {
+	return runChatMode(cmd, args, chatMode{})
+}
+
+func runChatMode(cmd *cobra.Command, args []string, mode chatMode) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -70,9 +88,19 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	system := chatSystem
+	if mode.systemPrompt != "" {
+		switch {
+		case strings.TrimSpace(system) == "":
+			system = mode.systemPrompt
+		case mode.appendSystem:
+			system = strings.TrimRight(system, "\n") + "\n\n" + mode.systemPrompt
+		}
+	}
+
 	messages := make([]domain.Message, 0, 2)
-	if strings.TrimSpace(chatSystem) != "" {
-		messages = append(messages, domain.Message{Role: domain.RoleSystem, Content: chatSystem})
+	if strings.TrimSpace(system) != "" {
+		messages = append(messages, domain.Message{Role: domain.RoleSystem, Content: system})
 	}
 	messages = append(messages, domain.Message{Role: domain.RoleUser, Content: prompt})
 
@@ -93,7 +121,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return cancelled(ctx, err)
 		}
-		if err := formatter.Text(os.Stdout, result); err != nil {
+		if err := writeResult(os.Stdout, mode, result); err != nil {
 			return err
 		}
 		infofGrey("%s -> %s (%s)", name, target.Model, elapsed(start))
@@ -101,7 +129,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	printer := formatter.NewStreamPrinter(os.Stdout, reasoningWriter())
+	printer := newStreamWriter(mode, reasoningWriter())
 	start := time.Now()
 	result, err := client.ChatStream(ctx, target.Model, messages, printer.Write)
 	if err != nil {
@@ -114,6 +142,39 @@ func runChat(cmd *cobra.Command, args []string) error {
 	infofGrey("%s -> %s (%d chunks, %s)", name, target.Model, result.Chunks, elapsed(start))
 	reportUsage(result.Usage)
 	return nil
+}
+
+// answerWriter is what a command streams deltas through. Both the plain and
+// the raw-code printer satisfy it.
+type answerWriter interface {
+	Write(domain.Chunk) error
+	Finish() error
+}
+
+// newStreamWriter picks the printer for a mode. Raw code uses a printer that
+// removes a wrapping fence; everything else writes deltas verbatim.
+func newStreamWriter(mode chatMode, onReasoning func(string)) answerWriter {
+	if mode.rawCode {
+		return formatter.NewCodePrinter(os.Stdout, onReasoning)
+	}
+	return formatter.NewStreamPrinter(os.Stdout, onReasoning)
+}
+
+// writeResult writes a complete, non-streamed answer. Plain chat writes it
+// verbatim; raw code runs it through the fence-stripping printer so that a
+// non-streamed reply is cleaned the same way a streamed one is.
+func writeResult(out io.Writer, mode chatMode, result domain.Result) error {
+	if !mode.rawCode {
+		return formatter.Text(out, result)
+	}
+
+	printer := formatter.NewCodePrinter(out, nil)
+	if result.Message.Content != "" {
+		if err := printer.Write(domain.Chunk{Content: result.Message.Content}); err != nil {
+			return err
+		}
+	}
+	return printer.Finish()
 }
 
 // reportUsage writes token accounting on stderr in grey, and writes nothing
@@ -160,10 +221,13 @@ func cancelled(ctx context.Context, err error) error {
 	return err
 }
 
-// readPrompt resolves the prompt from the file, the arguments, or stdin, in
-// that order.
+// readPrompt resolves the prompt from the file, the arguments, or stdin. A
+// prompt given as an argument or a file is the instruction; when stdin is a
+// pipe, its contents are appended to that instruction rather than discarded.
 func readPrompt(in io.Reader, args []string, file string) (string, error) {
-	if file != "" {
+	var prompt string
+	switch {
+	case file != "":
 		data, err := os.ReadFile(file)
 		if err != nil {
 			return "", fmt.Errorf("read prompt file: %w", err)
@@ -171,29 +235,40 @@ func readPrompt(in io.Reader, args []string, file string) (string, error) {
 		if strings.TrimSpace(string(data)) == "" {
 			return "", fmt.Errorf("prompt file %s is empty", file)
 		}
-		return string(data), nil
-	}
-
-	if len(args) > 0 {
-		prompt := strings.Join(args, " ")
+		prompt = string(data)
+	case len(args) > 0:
+		prompt = strings.Join(args, " ")
 		if strings.TrimSpace(prompt) == "" {
 			return "", errors.New("prompt is empty")
 		}
-		return prompt, nil
 	}
 
 	if stdinIsTerminal() {
-		return "", errors.New("no prompt: pass it as an argument, via --file, or on stdin")
+		if prompt == "" {
+			return "", errors.New("no prompt: pass it as an argument, via --file, or on stdin")
+		}
+		return prompt, nil
 	}
 
 	data, err := io.ReadAll(in)
 	if err != nil {
 		return "", fmt.Errorf("read stdin: %w", err)
 	}
-	if strings.TrimSpace(string(data)) == "" {
-		return "", errors.New("prompt from stdin is empty")
+	piped := string(data)
+
+	if prompt == "" {
+		if strings.TrimSpace(piped) == "" {
+			return "", errors.New("prompt from stdin is empty")
+		}
+		return piped, nil
 	}
-	return string(data), nil
+	if strings.TrimSpace(piped) == "" {
+		return prompt, nil
+	}
+
+	// An instruction followed by the piped data, so the model reads what to do
+	// before it reads what to do it to.
+	return strings.TrimRight(prompt, "\n") + "\n" + piped, nil
 }
 
 // stdinIsTerminal is a variable so tests can decide whether stdin looks like
