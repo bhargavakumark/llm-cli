@@ -297,8 +297,9 @@ func TestChatSystemPromptIsSent(t *testing.T) {
 		t.Fatalf("chat error = %v", err)
 	}
 
-	if !strings.Contains(*body, `{"role":"system","content":"be terse"}`) {
-		t.Errorf("request body %s should start with the system message", *body)
+	want := `{"role":"system","content":"be terse\n\n` + chatSystemPrompt + `"}`
+	if !strings.Contains(*body, want) {
+		t.Errorf("request body %s should contain %s", *body, want)
 	}
 }
 

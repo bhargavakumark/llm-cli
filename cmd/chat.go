@@ -18,6 +18,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// chatSystemPrompt is always added to the chat system message. It asks for a
+// crisp answer without emphasis markup, which models otherwise overuse.
+const chatSystemPrompt = "Be crisp and concise. No filler, no restating the " +
+	"question. Do not overuse bold or other emphasis markup."
+
 var (
 	chatSystem        string
 	chatFile          string
@@ -69,7 +74,10 @@ type chatMode struct {
 }
 
 func runChat(cmd *cobra.Command, args []string) error {
-	return runChatMode(cmd, args, chatMode{})
+	return runChatMode(cmd, args, chatMode{
+		systemPrompt: chatSystemPrompt,
+		appendSystem: true,
+	})
 }
 
 func runChatMode(cmd *cobra.Command, args []string, mode chatMode) error {

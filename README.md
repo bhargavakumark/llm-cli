@@ -154,10 +154,16 @@ mistyped pipe fails instead of sending an empty message.
 
 | Flag | Meaning |
 |---|---|
-| `--system`, `-s` | System prompt, sent as the first message |
+| `--system`, `-s` | Extra system context, sent before the built-in style instruction |
 | `--file`, `-f` | Read the prompt from a file |
 | `--no-stream` | Wait for the complete response instead of streaming |
 | `--show-reasoning` | Print reasoning deltas to stderr, in grey |
+
+Every chat request carries a built-in style instruction in the system
+message: be crisp and concise, no filler, no restating the question, and do
+not overuse bold or other emphasis markup. There is no flag to turn it off. A
+`--system` value is kept and the style instruction is appended after it, so
+extra context is added without losing the style request.
 
 After the answer, chat reports the target, model, chunk count and elapsed time
 on stderr in grey. When the endpoint reports token usage, either because the
