@@ -69,7 +69,7 @@ func TestAuthSetupWithALiteralKey(t *testing.T) {
 	_, _, err := runRoot(t, "",
 		"auth", "setup",
 		"--llm", "luna",
-		"--base-url", "https://gateway.example.com",
+		"--base-url", "https://gateway.google.com",
 		"--model", "gpt-6-luna",
 		"--key", "sk-test-abcdefghijklmnop",
 	)
@@ -290,7 +290,7 @@ func TestAuthShowShowsTheBindInterface(t *testing.T) {
 		t.Fatalf("setup error = %v", err)
 	}
 	if _, _, err := runRoot(t, "", "auth", "setup", "--llm", "luna",
-		"--base-url", "https://gateway.example.com", "--model", "gpt-6-luna"); err != nil {
+		"--base-url", "https://gateway.google.com", "--model", "gpt-6-luna"); err != nil {
 		t.Fatalf("setup error = %v", err)
 	}
 
