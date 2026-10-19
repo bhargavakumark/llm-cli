@@ -1,9 +1,8 @@
 # Architecture decision records
 
-These records were reverse-engineered from the code and the git history in
-October 2026, and describe decisions the code already embodies rather than
-proposals. ADR 1 was written when its decision was made and is the reference
-for the house style.
+These records describe decisions the code already embodies rather than
+proposals. ADR 1 was written when its decision was made and sets the house
+style.
 
 | Number | Title                                                               | Status                |
 | ------ | ------------------------------------------------------------------- | --------------------- |
